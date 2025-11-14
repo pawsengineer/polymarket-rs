@@ -1,3 +1,5 @@
+use crate::OrderId;
+
 use super::enums::{OrderType, Side};
 use alloy_primitives::U256;
 use rust_decimal::Decimal;
@@ -155,6 +157,7 @@ pub struct OpenOrdersResponse {
 /// Open order from the API
 #[derive(Debug, Deserialize)]
 pub struct OpenOrder {
+    pub id: OrderId,
     pub associate_trades: Vec<String>,
     pub status: String,
     pub market: String,
@@ -258,4 +261,28 @@ impl BookParams {
             side,
         }
     }
+}
+
+/// Response from posting an order
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostOrderResponse {
+    pub error_msg: String,
+    #[serde(rename = "orderID")]
+    pub order_id: OrderId,
+    pub status: String,
+    pub success: bool,
+}
+
+/// Response from canceling orders
+///
+/// This response is returned by:
+/// - `cancel` - Cancel a single order
+/// - `cancel_orders` - Cancel multiple orders
+/// - `cancel_all` - Cancel all orders
+/// - `cancel_market_orders` - Cancel orders by market/asset
+#[derive(Debug, Deserialize)]
+pub struct CancelOrdersResponse {
+    pub canceled: Vec<OrderId>,
+    pub not_canceled: serde_json::Value,
 }

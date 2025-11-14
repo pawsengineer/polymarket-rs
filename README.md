@@ -18,6 +18,7 @@ This project is a complete rewrite of [polymarket-rs-client](https://github.com/
 ## Features
 
 - **Full Authentication Support** - L1 (EIP-712) and L2 (HMAC) authentication
+- **WebSocket Streaming** - Real-time market data and user events with automatic reconnection
 - **Builder Pattern** - Fluent APIs for configuration and order creation
 - **Async/Await** - Built on `tokio` for high-performance async operations
 - **Decimal Precision** - Accurate financial calculations with `rust_decimal`
@@ -44,187 +45,91 @@ polymarket-rs = { git = "https://github.com/pawsengineer/polymarket-rs.git" }
 | `TradingClient`       | Order creation, cancellation, trade queries | L2 (HMAC)                 |
 | `DataClient`          | Position and portfolio data                 | None                      |
 
-### Public Market Data (No Authentication)
+### Public Market Data
+
+Query market data without authentication:
 
 ```rust
 use polymarket_rs::{ClobClient, TokenId};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ClobClient::new("https://clob.polymarket.com");
+let client = ClobClient::new("https://clob.polymarket.com");
+let token_id = TokenId::new("...");
 
-    let token_id = TokenId::new("21742633143463906290569050155826241533067272736897614950488156847949938836455");
-
-    // Get midpoint price
-    let midpoint = client.get_midpoint(&token_id).await?;
-    println!("Midpoint: {}", midpoint.mid);
-
-    // Get order book
-    let book = client.get_order_book(&token_id).await?;
-    println!("Best bid: {:?}", book.bids.first());
-    println!("Best ask: {:?}", book.asks.first());
-
-    Ok(())
-}
+// Get midpoint price, order books, spreads, etc.
+let midpoint = client.get_midpoint(&token_id).await?;
+let book = client.get_order_book(&token_id).await?;
 ```
+
+See [`examples/clob_data.rs`](examples/clob_data.rs) and [`examples/public_data.rs`](examples/public_data.rs) for complete examples.
 
 ### Authenticated Trading
 
+Three-step process for authenticated trading:
+
 ```rust
-use alloy_signer_local::PrivateKeySigner;
-use polymarket_rs::{
-    AuthenticatedClient, TradingClient, OrderBuilder,
-    OrderArgs, Side, OrderType, SignatureType,
-    CreateOrderOptions,
-};
-use rust_decimal::Decimal;
-use std::str::FromStr;
+use polymarket_rs::{AuthenticatedClient, TradingClient, OrderBuilder, SignatureType};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load private key from environment
-    let private_key = std::env::var("PRIVATE_KEY")?;
-    let signer = PrivateKeySigner::from_str(&private_key)?;
+// 1. Create or derive API credentials
+let auth_client = AuthenticatedClient::new(host, signer.clone(), chain_id, None, None);
+let api_creds = auth_client.create_or_derive_api_key().await?;
 
-    let chain_id = 137; // Polygon Mainnet
-    let host = "https://clob.polymarket.com";
+// 2. Create trading client with order builder
+let order_builder = OrderBuilder::new(signer.clone(), Some(SignatureType::Eoa), None);
+let trading_client = TradingClient::new(host, signer, chain_id, api_creds, order_builder);
 
-    // Step 1: Create or derive API credentials
-    let auth_client = AuthenticatedClient::new(
-        host,
-        signer.clone(),
-        chain_id,
-        None,  // api_creds (will be created)
-        None,  // funder (None for EOA wallets)
-    );
+// 3. Create and post orders
+let order_args = OrderArgs::new(token_id, price, size, Side::Buy);
+trading_client.create_and_post_order(&order_args, None, None, options, OrderType::Gtc).await?;
+```
 
-    let api_creds = auth_client.create_or_derive_api_key().await?;
-    println!("Authenticated with API key: {}", api_creds.api_key);
+**PolyProxy & PolyGnosisSafe Wallets**: For proxy wallets, pass the proxy address to `AuthenticatedClient` and use `SignatureType::PolyGnosisSafe` in `OrderBuilder`. Proxy wallets have automatic allowance management.
 
-    // Step 2: Create trading client
-    let order_builder = OrderBuilder::new(
-        signer.clone(),
-        Some(SignatureType::Eoa),
-        None,
-    );
+See [`examples/authenticated_trading.rs`](examples/authenticated_trading.rs) for complete examples including proxy wallet setup.
 
-    let trading_client = TradingClient::new(
-        host,
-        signer,
-        chain_id,
-        api_creds,
-        order_builder,
-    );
+## WebSocket Streaming
 
-    // Step 3: Create and post a limit order
-    let order_args = OrderArgs::new(
-        "token_id_here",
-        Decimal::from_str("0.50")?, // price
-        Decimal::from_str("10.0")?,  // size
-        Side::Buy,
-    );
+Real-time market data and user events with automatic reconnection:
 
-    let options = CreateOrderOptions::default()
-        .tick_size(Decimal::from_str("0.01")?)
-        .neg_risk(false);
+```rust
+use polymarket_rs::websocket::{MarketWsClient, ReconnectingStream, ReconnectConfig};
+use futures_util::StreamExt;
 
-    trading_client.create_and_post_order(
-        &order_args,
-        None,        // expiration (defaults to 0 = no expiration)
-        None,        // extras (defaults to ExtraOrderArgs::default())
-        options,
-        OrderType::Gtc,
-    ).await?;
+let client = MarketWsClient::new();
+let config = ReconnectConfig::default();
 
-    println!("Order posted successfully!");
+let mut stream = ReconnectingStream::new(config, move || {
+    client.subscribe(token_ids.clone())
+});
 
-    Ok(())
+while let Some(result) = stream.next().await {
+    // Process market events
 }
 ```
 
-### PolyProxy & PolyGnosisSafe
-
-For PolyProxy and PolyGnosisSafe wallets, you need to specify both the EOA signer and the proxy wallet address:
-
-```rust
-use alloy_primitives::Address;
-use alloy_signer_local::PrivateKeySigner;
-use polymarket_rs::{
-    AuthenticatedClient, TradingClient, OrderBuilder,
-    OrderArgs, Side, OrderType, SignatureType,
-    CreateOrderOptions,
-};
-use rust_decimal::Decimal;
-use std::str::FromStr;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let private_key = std::env::var("PRIVATE_KEY")?;
-    let signer = PrivateKeySigner::from_str(&private_key)?;
-
-    // Your proxy wallet address (holds the funds)
-    let proxy_wallet_address = Address::from_str("{ProxyWalletAddress}")?;
-
-    let chain_id = 137;
-    let host = "https://clob.polymarket.com";
-
-    // API authentication uses the EOA signer
-    let auth_client = AuthenticatedClient::new(
-        host,
-        signer.clone(),
-        chain_id,
-        None,
-        Some(proxy_wallet_address),  // Pass proxy wallet address
-    );
-
-    let api_creds = auth_client.create_or_derive_api_key().await?;
-
-    // OrderBuilder uses PolyGnosisSafe signature type and proxy wallet as funder
-    let order_builder = OrderBuilder::new(
-        signer.clone(),               // EOA signer
-        Some(SignatureType::PolyGnosisSafe),
-        Some(proxy_wallet_address),   // Proxy wallet holds funds
-    );
-
-    let trading_client = TradingClient::new(
-        host,
-        signer,
-        chain_id,
-        api_creds,
-        order_builder,
-    );
-
-    // PolyProxy & PolyGnosisSafe wallets have automatic allowance management
-    // No manual ERC-20 approvals needed!
-
-    Ok(())
-}
-```
+See [`examples/websocket_market.rs`](examples/websocket_market.rs) and [`examples/websocket_user.rs`](examples/websocket_user.rs) for complete streaming examples.
 
 ## Examples
 
-See the [examples/](examples/) directory for complete working examples:
-
-- [`clob_data.rs`](examples/clob_data.rs) - CLOB market data queries (prices, order books, markets)
-- [`public_data.rs`](examples/public_data.rs) - Position and portfolio data queries
-- [`authenticated_trading.rs`](examples/authenticated_trading.rs) - Authenticated trading operations
-
-Run an example:
+Run examples from the [`examples/`](examples/) directory:
 
 ```bash
+# Public market data
 cargo run --example clob_data
 cargo run --example public_data
+
+# Authenticated trading
 PRIVATE_KEY="0x..." cargo run --example authenticated_trading
+
+# WebSocket streaming
+cargo run --example websocket_market
+PRIVATE_KEY="0x..." cargo run --example websocket_user
 ```
 
 ## License
 
 Licensed under either of:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+- MIT license ([LICENSE-MIT](http://opensource.org/licenses/MIT))
 
 ## Contributing
 

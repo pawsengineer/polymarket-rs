@@ -7,6 +7,7 @@
 //! - Order creation and management (authenticated)
 //! - Account and balance operations (authenticated)
 //! - Position tracking
+//! - Real-time WebSocket streaming for market data and user events
 //!
 //! ## Features
 //!
@@ -15,33 +16,6 @@
 //! - **Proper Error Handling**: No panics, comprehensive error types
 //! - **EIP-712 Signing**: Full support for Ethereum wallet signatures
 //! - **Decimal Precision**: Accurate decimal math for prices and amounts
-//!
-//! ## Quick Start
-//!
-//! ```rust,no_run
-//! use polymarket_rs::client::ClobClient;
-//! use polymarket_rs::types::TokenId;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let client = ClobClient::new("https://clob.polymarket.com");
-//!
-//!     let token_id = TokenId::new("123456");
-//!     let midpoint = client.get_midpoint(&token_id).await?;
-//!
-//!     println!("Midpoint: {}", midpoint.mid);
-//!     Ok(())
-//! }
-//! ```
-//!
-//! ## Modules
-//!
-//! - [`client`]: Client implementations for different API operations
-//! - [`types`]: Type definitions for API requests and responses
-//! - [`config`]: Network and contract configuration
-//! - [`orders`]: Order building and rounding logic
-//! - [`signing`]: EIP-712 signing functionality
-//! - [`error`]: Error types
 //!
 
 // Public modules
@@ -52,6 +26,7 @@ pub mod orders;
 pub mod request;
 pub mod signing;
 pub mod types;
+pub mod websocket;
 
 // Internal modules
 mod http;
@@ -69,6 +44,9 @@ pub use types::{
 
 // Re-export clients
 pub use client::{AuthenticatedClient, ClobClient, DataClient, TradingClient};
+
+// Re-export websocket clients
+pub use websocket::{MarketWsClient, UserWsClient};
 
 // Re-export order builder
 pub use orders::OrderBuilder;

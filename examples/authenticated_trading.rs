@@ -8,8 +8,7 @@ use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // IMPORTANT: Replace with your actual private key
-    // NEVER commit your private key to version control!
+    // Replace with your actual private key
     let private_key =
         std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY environment variable not set");
 
@@ -18,7 +17,7 @@ async fn main() -> Result<()> {
     let chain_id = 137; // Polygon Mainnet
     let host = "https://clob.polymarket.com";
 
-    println!("Wallet address: {}", signer.address());
+    println!("Signer address: {}", signer.address());
 
     // Step 1: Create or derive API credentials
     println!("\n1. Creating/deriving API credentials...");

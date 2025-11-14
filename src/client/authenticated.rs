@@ -51,6 +51,43 @@ impl AuthenticatedClient {
         }
     }
 
+    /// Get the API credentials if available
+    ///
+    /// Returns a reference to the API credentials if they were provided when creating
+    /// the client. This is useful for accessing credentials for WebSocket authentication.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use polymarket_rs::{AuthenticatedClient, ApiCreds};
+    /// # use polymarket_rs::websocket::UserWsClient;
+    /// # use alloy_signer_local::PrivateKeySigner;
+    /// # use futures_util::StreamExt;
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let signer = PrivateKeySigner::random();
+    /// # let creds = ApiCreds::new("key".into(), "secret".into(), "pass".into());
+    /// let auth_client = AuthenticatedClient::new(
+    ///     "https://clob.polymarket.com",
+    ///     signer,
+    ///     137,
+    ///     Some(creds),
+    ///     None,
+    /// );
+    ///
+    /// // Use the credentials for WebSocket authentication
+    /// if let Some(creds) = auth_client.api_creds() {
+    ///     let ws_client = UserWsClient::new();
+    ///     let mut stream = ws_client.subscribe_with_creds(creds).await?;
+    ///     // Process events...
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn api_creds(&self) -> Option<&ApiCreds> {
+        self.api_creds.as_ref()
+    }
+
     /// Create a new API key (L1 authentication required)
     ///
     /// This creates a new API key for the signer's address.

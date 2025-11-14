@@ -69,7 +69,7 @@ pub enum SignatureType {
     /// Poly Proxy wallet signature
     #[serde(rename = "1")]
     PolyProxy = 1,
-    /// Poly Gnosis Safe signature (currently unused)
+    /// Poly Gnosis Safe signature
     #[serde(rename = "2")]
     PolyGnosisSafe = 2,
 }

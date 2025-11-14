@@ -2,11 +2,19 @@
 name = "polymarket-rs"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Pawsengineer <play.pawsengineer@gmail.com>"]
 description = "Rust client library for the Polymarket CLOB API"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/polymarket-rs"
-keywords = ["polymarket", "prediction-markets", "ethereum", "trading"]
+license = "MIT"
+repository = "https://github.com/pawsengineer/polymarket-rs"
+keywords = [
+    "polymarket",
+    "clob",
+    "client",
+    "prediction-markets",
+    "polygon",
+    "ethereum",
+    "trading",
+]
 categories = ["api-bindings", "cryptography::cryptocurrencies"]
 
 [dependencies]
@@ -21,6 +29,8 @@ alloy-signer-local = "0.7.2"
 # HTTP & Async
 reqwest = { version = "0.12.9", features = ["json"] }
 tokio = { version = "1.41.1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

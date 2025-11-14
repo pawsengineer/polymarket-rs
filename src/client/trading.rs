@@ -3,9 +3,9 @@ use crate::http::{create_l2_headers, HttpClient};
 use crate::orders::OrderBuilder;
 use crate::signing::EthSigner;
 use crate::types::{
-    ApiCreds, CreateOrderOptions, ExtraOrderArgs, MarketOrderArgs, OpenOrder, OpenOrderParams,
-    OpenOrdersResponse, OrderArgs, OrderBookSummary, OrderId, OrderType, PostOrder, Side,
-    SignedOrderRequest, TradeParams,
+    ApiCreds, CancelOrdersResponse, CreateOrderOptions, ExtraOrderArgs, MarketOrderArgs,
+    OpenOrder, OpenOrderParams, OpenOrdersResponse, OrderArgs, OrderBookSummary, OrderId,
+    OrderType, PostOrder, PostOrderResponse, Side, SignedOrderRequest, TradeParams,
 };
 
 /// Client for trading operations
@@ -108,7 +108,7 @@ impl TradingClient {
         &self,
         order: SignedOrderRequest,
         order_type: OrderType,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<PostOrderResponse> {
         let owner = self.api_creds.api_key.clone();
         let post_order = PostOrder::new(order, owner, order_type);
 
@@ -141,7 +141,7 @@ impl TradingClient {
         extras: Option<&ExtraOrderArgs>,
         options: CreateOrderOptions,
         order_type: OrderType,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<PostOrderResponse> {
         let order = self.create_order(order_args, expiration, extras, options)?;
         self.post_order(order, order_type).await
     }
@@ -188,7 +188,7 @@ impl TradingClient {
     ///
     /// # Arguments
     /// * `order_id` - The ID of the order to cancel
-    pub async fn cancel(&self, order_id: &OrderId) -> Result<serde_json::Value> {
+    pub async fn cancel(&self, order_id: &OrderId) -> Result<CancelOrdersResponse> {
         let body = serde_json::json!({ "orderID": order_id.as_str() });
         let headers = create_l2_headers(
             &self.signer,
@@ -206,9 +206,9 @@ impl TradingClient {
     ///
     /// # Arguments
     /// * `order_ids` - List of order IDs to cancel
-    pub async fn cancel_orders(&self, order_ids: &[OrderId]) -> Result<serde_json::Value> {
+    pub async fn cancel_orders(&self, order_ids: &[OrderId]) -> Result<CancelOrdersResponse> {
         let ids: Vec<&str> = order_ids.iter().map(|id| id.as_str()).collect();
-        let body = serde_json::json!({ "orderIDs": ids });
+        let body = serde_json::json!(ids);
         let headers = create_l2_headers(
             &self.signer,
             &self.api_creds,
@@ -222,7 +222,7 @@ impl TradingClient {
     }
 
     /// Cancel all orders
-    pub async fn cancel_all(&self) -> Result<serde_json::Value> {
+    pub async fn cancel_all(&self) -> Result<CancelOrdersResponse> {
         let body = serde_json::json!({});
         let headers = create_l2_headers(
             &self.signer,
@@ -245,7 +245,7 @@ impl TradingClient {
         &self,
         market: Option<&str>,
         asset_id: Option<&str>,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<CancelOrdersResponse> {
         // Python SDK always sends both fields, defaulting to empty strings
         let body = serde_json::json!({
             "market": market.unwrap_or(""),
@@ -309,7 +309,7 @@ impl TradingClient {
     /// Check if multiple orders are scoring
     pub async fn are_orders_scoring(&self, order_ids: &[OrderId]) -> Result<serde_json::Value> {
         let ids: Vec<&str> = order_ids.iter().map(|id| id.as_str()).collect();
-        let body = serde_json::json!({ "ids": ids });
+        let body = serde_json::json!(ids);
         let headers = create_l2_headers(
             &self.signer,
             &self.api_creds,
