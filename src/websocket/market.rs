@@ -1,9 +1,32 @@
 use futures_util::{SinkExt, Stream, StreamExt};
 use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::error::{Error, Result};
 use crate::types::{MarketSubscription, WsEvent};
+
+/// Handle for querying WebSocket subscription state
+///
+/// This handle provides read-only access to the current token IDs
+/// being subscribed to.
+///
+/// **Note**: Polymarket does not support updating subscriptions on an
+/// existing WebSocket connection. To change subscriptions, you must
+/// close the connection and create a new one with the updated token list.
+#[derive(Clone)]
+pub struct SubscriptionHandle {
+    /// Shared state containing current token IDs
+    current_tokens: Arc<RwLock<Vec<String>>>,
+}
+
+impl SubscriptionHandle {
+    /// Get the current token IDs being subscribed to
+    pub async fn current_tokens(&self) -> Vec<String> {
+        self.current_tokens.read().await.clone()
+    }
+}
 
 /// WebSocket client for streaming market data (order book updates)
 ///
@@ -18,42 +41,6 @@ use crate::types::{MarketSubscription, WsEvent};
 /// For Rust, the recommended approach is to use [`ReconnectingStream`](crate::websocket::ReconnectingStream)
 /// which automatically handles connection resets and reconnects with exponential backoff.
 /// This is more robust than manual ping/pong management.
-///
-/// # Example with Auto-Reconnect
-///
-/// ```no_run
-/// use polymarket_rs::websocket::{MarketWsClient, ReconnectConfig, ReconnectingStream};
-/// use futures_util::StreamExt;
-/// use std::time::Duration;
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let client = MarketWsClient::new();
-///     let token_ids = vec!["your_token_id".to_string()];
-///
-///     let config = ReconnectConfig {
-///         initial_delay: Duration::from_secs(1),
-///         max_delay: Duration::from_secs(30),
-///         multiplier: 2.0,
-///         max_attempts: None,
-///     };
-///
-///     let token_ids_clone = token_ids.clone();
-///     let mut stream = ReconnectingStream::new(config, move || {
-///         let client = client.clone();
-///         let token_ids = token_ids_clone.clone();
-///         async move { client.subscribe(token_ids).await }
-///     });
-///
-///     while let Some(event) = stream.next().await {
-///         match event {
-///             Ok(evt) => println!("Event: {:?}", evt),
-///             Err(_) => continue, // Will auto-reconnect
-///         }
-///     }
-///     Ok(())
-/// }
-/// ```
 #[derive(Debug, Clone)]
 pub struct MarketWsClient {
     ws_url: String,
@@ -77,10 +64,148 @@ impl MarketWsClient {
         }
     }
 
+    /// Subscribe to market updates with a handle to query subscription state
+    ///
+    /// Returns a stream of [`WsEvent`] items and a [`SubscriptionHandle`] that can be used
+    /// to query which token IDs are currently subscribed.
+    ///
+    /// **Note**: Polymarket does not support updating subscriptions on an existing connection.
+    /// To change subscriptions, you must close the connection and create a new one.
+    ///
+    /// # Arguments
+    ///
+    /// * `token_ids` - List of token/asset IDs to subscribe to
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// - Stream of [`WsEvent`] items
+    /// - [`SubscriptionHandle`] for querying current subscriptions
+    ///
+    /// # Events
+    ///
+    /// The stream will yield three types of events:
+    /// - [`WsEvent::Book`]: Full order book snapshot (sent initially)
+    /// - [`WsEvent::PriceChange`]: Incremental updates to the order book
+    /// - [`WsEvent::LastTradePrice`]: Trade execution events
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The WebSocket connection fails
+    /// - The subscription message cannot be sent
+    pub async fn subscribe_with_handle(
+        &self,
+        token_ids: Vec<String>,
+    ) -> Result<(
+        Pin<Box<dyn Stream<Item = Result<WsEvent>> + Send>>,
+        SubscriptionHandle,
+    )> {
+        // Connect to the WebSocket endpoint
+        let (ws_stream, _) = connect_async(&self.ws_url).await?;
+
+        let (write, read) = ws_stream.split();
+        let mut write = write;
+
+        // Create subscription message
+        let subscription = MarketSubscription {
+            assets_ids: token_ids.clone(),
+        };
+
+        let subscription_msg = serde_json::to_string(&subscription)?;
+
+        // Send initial subscription message
+        write
+            .send(Message::Text(subscription_msg))
+            .await
+            .map_err(|e| Error::WebSocket(e.to_string()))?;
+
+        // Drop the write half since we don't need to send any more messages
+        drop(write);
+
+        // Create shared state for current tokens
+        let current_tokens = Arc::new(RwLock::new(token_ids));
+
+        // Create subscription handle
+        let handle = SubscriptionHandle { current_tokens };
+
+        // Return stream that parses events
+        let stream = read.filter_map(|msg| async move {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    // Skip empty or whitespace-only messages
+                    let trimmed = text.trim();
+                    if trimmed.is_empty() {
+                        return None;
+                    }
+
+                    // Skip PING/PONG messages sent as text (some servers do this)
+                    if trimmed.eq_ignore_ascii_case("ping") || trimmed.eq_ignore_ascii_case("pong") {
+                        return None;
+                    }
+
+                    // The server can send either a single object or an array
+                    // Try to parse as array first
+                    if let Ok(events) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
+                        // Got an array, take the first event
+                        if let Some(first) = events.first() {
+                            match serde_json::from_value::<WsEvent>(first.clone()) {
+                                Ok(event) => return Some(Ok(event)),
+                                Err(e) => return Some(Err(Error::Json(e))),
+                            }
+                        } else {
+                            // Empty array, ignore
+                            return None;
+                        }
+                    }
+
+                    // Try parsing as single object
+                    match serde_json::from_str::<WsEvent>(&text) {
+                        Ok(event) => Some(Ok(event)),
+                        Err(e) => {
+                            // Log unexpected message format for debugging
+                            eprintln!("Unexpected WebSocket message (first 200 chars): {}",
+                                     &text.chars().take(200).collect::<String>());
+                            Some(Err(Error::Json(e)))
+                        }
+                    }
+                }
+                Ok(Message::Close(_)) => {
+                    // Connection closed gracefully
+                    Some(Err(Error::ConnectionClosed))
+                }
+                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
+                    // Ignore ping/pong frames (handled automatically)
+                    None
+                }
+                Ok(Message::Binary(_)) => {
+                    // Unexpected binary message
+                    Some(Err(Error::WebSocket(
+                        "Unexpected binary message".to_string(),
+                    )))
+                }
+                Ok(Message::Frame(_)) => {
+                    // Raw frame (shouldn't happen)
+                    None
+                }
+                Err(e) => {
+                    // WebSocket error
+                    Some(Err(Error::WebSocket(e.to_string())))
+                }
+            }
+        });
+
+        Ok((Box::pin(stream), handle))
+    }
+
     /// Subscribe to market updates for the specified token IDs
     ///
     /// Returns a stream of [`WsEvent`] items. The stream will yield events as they
     /// are received from the WebSocket connection.
+    ///
+    /// **Note:** This method does not support dynamic subscription updates.
+    /// Use [`subscribe_with_handle`](Self::subscribe_with_handle) if you need to
+    /// update subscriptions without reconnecting.
     ///
     /// # Arguments
     ///
@@ -88,34 +213,16 @@ impl MarketWsClient {
     ///
     /// # Events
     ///
-    /// The stream will yield two types of events:
+    /// The stream will yield three types of events:
     /// - [`WsEvent::Book`]: Full order book snapshot (sent initially)
     /// - [`WsEvent::PriceChange`]: Incremental updates to the order book
+    /// - [`WsEvent::LastTradePrice`]: Trade execution events
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The WebSocket connection fails
     /// - The subscription message cannot be sent
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use polymarket_rs::websocket::MarketWsClient;
-    /// # use futures_util::StreamExt;
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = MarketWsClient::new();
-    /// let token_ids = vec!["token_id_1".to_string(), "token_id_2".to_string()];
-    ///
-    /// let mut stream = client.subscribe(token_ids).await?;
-    ///
-    /// while let Some(event) = stream.next().await {
-    ///     println!("Received event: {:?}", event?);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn subscribe(
         &self,
         token_ids: Vec<String>,
@@ -139,10 +246,24 @@ impl MarketWsClient {
             .await
             .map_err(|e| Error::WebSocket(e.to_string()))?;
 
+        // Drop the write half since we don't need to send any more messages
+        drop(write);
+
         // Return stream that parses events
         let stream = read.filter_map(|msg| async move {
             match msg {
                 Ok(Message::Text(text)) => {
+                    // Skip empty or whitespace-only messages
+                    let trimmed = text.trim();
+                    if trimmed.is_empty() {
+                        return None;
+                    }
+
+                    // Skip PING/PONG messages sent as text (some servers do this)
+                    if trimmed.eq_ignore_ascii_case("ping") || trimmed.eq_ignore_ascii_case("pong") {
+                        return None;
+                    }
+
                     // The server can send either a single object or an array
                     // Try to parse as array first
                     if let Ok(events) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
@@ -161,7 +282,12 @@ impl MarketWsClient {
                     // Try parsing as single object
                     match serde_json::from_str::<WsEvent>(&text) {
                         Ok(event) => Some(Ok(event)),
-                        Err(e) => Some(Err(Error::Json(e))),
+                        Err(e) => {
+                            // Log unexpected message format for debugging
+                            eprintln!("Unexpected WebSocket message (first 200 chars): {}",
+                                     &text.chars().take(200).collect::<String>());
+                            Some(Err(Error::Json(e)))
+                        }
                     }
                 }
                 Ok(Message::Close(_)) => {

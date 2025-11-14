@@ -15,6 +15,8 @@ pub enum WsEvent {
     Book(BookEvent),
     /// Incremental order book update
     PriceChange(PriceChangeEvent),
+    /// Last trade price update
+    LastTradePrice(LastTradePriceEvent),
 }
 
 /// Full order book snapshot event
@@ -80,6 +82,32 @@ pub struct PriceChange {
     /// New size at this price level (0 means remove the level)
     #[serde(with = "rust_decimal::serde::str")]
     pub size: Decimal,
+}
+
+/// Last trade price event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastTradePriceEvent {
+    /// Event type discriminator (always "last_trade_price")
+    pub event_type: String,
+    /// Market ID
+    pub market: String,
+    /// Token/Asset ID
+    pub asset_id: String,
+    /// Trade price
+    #[serde(with = "rust_decimal::serde::str")]
+    pub price: Decimal,
+    /// Trade size
+    #[serde(with = "rust_decimal::serde::str")]
+    pub size: Decimal,
+    /// Fee rate in basis points
+    #[serde(with = "rust_decimal::serde::str")]
+    pub fee_rate_bps: Decimal,
+    /// Side of the trade (BUY or SELL)
+    pub side: Side,
+    /// Timestamp of the trade
+    pub timestamp: String,
+    /// Transaction hash on blockchain
+    pub transaction_hash: String,
 }
 
 // ============================================================================

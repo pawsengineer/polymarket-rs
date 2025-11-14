@@ -1,44 +1,26 @@
 use futures_util::StreamExt;
 use polymarket_rs::types::WsEvent;
-use polymarket_rs::websocket::{MarketWsClient, ReconnectConfig, ReconnectingStream};
-use std::time::Duration;
+use polymarket_rs::websocket::MarketWsClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = MarketWsClient::new();
 
+    // Token IDs to subscribe to
     let token_ids = vec![
-        // "Yes" (outcome token) for "Fed decreases interest rates by 25 bps after December 2025 meeting?"
-        "87769991026114894163580777793845523168226980076553814689875238288185044414090".to_string(),
+        // "Yes" token for "Fed decreases interest rates by 25 bps after December 2025 meeting?"
+        "87769991026114894163580777793845523168226980076553814689875238288185044414090"
+            .to_string(),
     ];
 
     println!("Connecting to CLOB WebSocket...");
     println!("Subscribing to {} token(s)", token_ids.len());
 
-    // Configure automatic reconnection
-    let config = ReconnectConfig {
-        initial_delay: Duration::from_secs(1),
-        max_delay: Duration::from_secs(30),
-        multiplier: 2.0,
-        max_attempts: None, // Unlimited reconnection attempts
-    };
+    // Subscribe to market updates
+    let (mut stream, _handle) = client.subscribe_with_handle(token_ids).await?;
 
-    // Create a reconnecting stream that will automatically reconnect on disconnection
-    let token_ids_clone = token_ids.clone();
-    let mut stream = ReconnectingStream::new(config, move || {
-        let client = client.clone();
-        let token_ids = token_ids_clone.clone();
-        async move {
-            println!("🔌 Connecting to WebSocket...");
-            let result = client.subscribe(token_ids).await;
-            if result.is_ok() {
-                println!("✅ Connected successfully!");
-            }
-            result
-        }
-    });
-
-    println!("Connected! Waiting for events...\n");
+    println!("✅ Connected successfully!");
+    println!("Waiting for events...\n");
 
     // Process events as they arrive
     let mut event_count = 0;
@@ -80,13 +62,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         println!();
                     }
+                    WsEvent::LastTradePrice(trade) => {
+                        println!("[Trade Event #{}]", event_count);
+                        println!("  Market: {}", trade.market);
+                        println!("  Asset ID: {}", trade.asset_id);
+                        println!("  Trade: {:?} {} @ {}", trade.side, trade.size, trade.price);
+                        println!("  Fee: {} bps", trade.fee_rate_bps);
+                        println!("  TX: {}", trade.transaction_hash);
+                        println!();
+                    }
                 }
             }
             Err(e) => {
                 eprintln!("❌ Error: {}", e);
-                // The ReconnectingStream will automatically attempt to reconnect
-                // Continue processing to allow reconnection
-                eprintln!("⏳ Will attempt to reconnect...");
+                break;
             }
         }
     }
