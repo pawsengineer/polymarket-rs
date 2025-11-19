@@ -1,7 +1,22 @@
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{types::ActivityType, Side};
+
+/// Custom deserializer for optional Side that treats empty strings as None
+fn deserialize_optional_side<'de, D>(deserializer: D) -> Result<Option<Side>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    if s.is_empty() {
+        Ok(None)
+    } else {
+        serde_json::from_str(&format!("\"{}\"", s))
+            .map(Some)
+            .map_err(serde::de::Error::custom)
+    }
+}
 
 /// User position information
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -139,7 +154,8 @@ pub struct Activity {
     #[serde(deserialize_with = "super::serde_helpers::deserialize_decimal")]
     pub price: Decimal,
     pub asset: String,
-    pub side: Side,
+    #[serde(default, deserialize_with = "deserialize_optional_side")]
+    pub side: Option<Side>,
     #[serde(rename = "outcomeIndex")]
     pub outcome_index: u32,
     pub title: String,
@@ -149,12 +165,6 @@ pub struct Activity {
     pub event_slug: String,
     pub outcome: String,
     pub name: String,
-    pub pseudonym: String,
-    pub bio: String,
-    #[serde(rename = "profileImage")]
-    pub profile_image: String,
-    #[serde(rename = "profileImageOptimized")]
-    pub profile_image_optimized: String,
 }
 
 /// Closed position information from the data API

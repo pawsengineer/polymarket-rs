@@ -126,4 +126,10 @@ pub enum NotificationType {
 pub enum ActivityType {
     #[default]
     Trade,
+    Yield,
+    Reward,
+    Split,
+    Merge,
+    Conversion,
+    Redeem,
 }
