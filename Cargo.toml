@@ -6,15 +6,7 @@ authors = ["Pawsengineer <play.pawsengineer@gmail.com>"]
 description = "Rust client library for the Polymarket CLOB and Data API"
 license = "MIT"
 repository = "https://github.com/pawsengineer/polymarket-rs"
-keywords = [
-    "polymarket",
-    "clob",
-    "client",
-    "prediction-markets",
-    "polygon",
-    "ethereum",
-    "trading",
-]
+keywords = ["polymarket", "api", "clob", "client", "prediction-markets"]
 categories = ["api-bindings", "cryptography::cryptocurrencies"]
 
 [dependencies]
