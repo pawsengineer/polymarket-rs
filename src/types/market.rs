@@ -15,6 +15,7 @@ pub struct Market {
     pub enable_order_book: bool,
     pub archived: bool,
     pub accepting_orders: bool,
+    pub accepting_order_timestamp: Option<String>,
     pub question_id: String,
     pub question: String,
     #[serde(deserialize_with = "super::serde_helpers::deserialize_decimal")]
@@ -185,6 +186,7 @@ mod tests {
             enable_order_book: true,
             archived: false,
             accepting_orders: true,
+            accepting_order_timestamp: Some("2024-12-29T22:38:10Z".to_string()),
             question_id: "q1".to_string(),
             question: "Test question?".to_string(),
             minimum_order_size: Decimal::ZERO,
