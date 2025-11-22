@@ -1,4 +1,4 @@
-use super::rounding::{decimal_to_token_u32, fix_amount_rounding, ROUNDING_CONFIG};
+use super::rounding::{decimal_to_token_u64, fix_amount_rounding, ROUNDING_CONFIG};
 use crate::config::get_contract_config;
 use crate::error::{Error, Result};
 use crate::orders::RoundConfig;
@@ -65,7 +65,7 @@ impl OrderBuilder {
         size: Decimal,
         price: Decimal,
         round_config: &super::rounding::RoundConfig,
-    ) -> (u32, u32) {
+    ) -> (u64, u64) {
         let raw_price = price.round_dp_with_strategy(round_config.price, MidpointTowardZero);
 
         match side {
@@ -74,8 +74,8 @@ impl OrderBuilder {
                 let raw_maker_amt = raw_taker_amt * raw_price;
                 let raw_maker_amt = fix_amount_rounding(raw_maker_amt, round_config);
                 (
-                    decimal_to_token_u32(raw_maker_amt),
-                    decimal_to_token_u32(raw_taker_amt),
+                    decimal_to_token_u64(raw_maker_amt),
+                    decimal_to_token_u64(raw_taker_amt),
                 )
             }
             Side::Sell => {
@@ -84,8 +84,8 @@ impl OrderBuilder {
                 let raw_taker_amt = fix_amount_rounding(raw_taker_amt, round_config);
 
                 (
-                    decimal_to_token_u32(raw_maker_amt),
-                    decimal_to_token_u32(raw_taker_amt),
+                    decimal_to_token_u64(raw_maker_amt),
+                    decimal_to_token_u64(raw_taker_amt),
                 )
             }
         }
@@ -97,7 +97,7 @@ impl OrderBuilder {
         amount: Decimal,
         price: Decimal,
         round_config: &RoundConfig,
-    ) -> (u32, u32) {
+    ) -> (u64, u64) {
         let raw_maker_amt = amount.round_dp_with_strategy(round_config.size, ToZero);
         let raw_price = price.round_dp_with_strategy(round_config.price, MidpointTowardZero);
 
@@ -106,8 +106,8 @@ impl OrderBuilder {
         let raw_taker_amt = fix_amount_rounding(raw_taker_amt, round_config);
 
         (
-            decimal_to_token_u32(raw_maker_amt),
-            decimal_to_token_u32(raw_taker_amt),
+            decimal_to_token_u64(raw_maker_amt),
+            decimal_to_token_u64(raw_taker_amt),
         )
     }
 
@@ -209,8 +209,8 @@ impl OrderBuilder {
         side: Side,
         chain_id: u64,
         exchange: Address,
-        maker_amount: u32,
-        taker_amount: u32,
+        maker_amount: u64,
+        taker_amount: u64,
         expiration: u64,
         extras: &ExtraOrderArgs,
     ) -> Result<SignedOrderRequest> {

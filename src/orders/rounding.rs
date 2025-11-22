@@ -51,13 +51,12 @@ pub static ROUNDING_CONFIG: LazyLock<HashMap<Decimal, RoundConfig>> = LazyLock::
 });
 
 /// Convert decimal amount to token units (multiply by 1e6 and round)
-pub fn decimal_to_token_u32(amt: Decimal) -> u32 {
+pub fn decimal_to_token_u64(amt: Decimal) -> u64 {
     let mut amt = Decimal::from_scientific("1e6").expect("1e6 is not scientific") * amt;
     if amt.scale() > 0 {
         amt = amt.round_dp_with_strategy(0, MidpointTowardZero);
     }
-    amt.try_into()
-        .expect("Couldn't round decimal to integer")
+    amt.try_into().expect("Couldn't round decimal to integer")
 }
 
 /// Fix amount rounding to ensure proper precision
@@ -85,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_decimal_to_token() {
-        let result = decimal_to_token_u32(Decimal::from_str("1.5").unwrap());
+        let result = decimal_to_token_u64(Decimal::from_str("1.5").unwrap());
         assert_eq!(result, 1_500_000);
     }
 }
