@@ -1,4 +1,4 @@
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,8 @@ pub struct Market {
     pub enable_order_book: bool,
     pub archived: bool,
     pub accepting_orders: bool,
-    pub accepting_order_timestamp: Option<String>,
+    #[serde(deserialize_with = "super::serde_helpers::deserialize_optional_datetime")]
+    pub accepting_order_timestamp: Option<DateTime<Utc>>,
     pub question_id: String,
     pub question: String,
     #[serde(deserialize_with = "super::serde_helpers::deserialize_decimal")]
@@ -24,8 +25,10 @@ pub struct Market {
     pub minimum_tick_size: Decimal,
     pub description: String,
     pub category: Option<String>,
-    pub end_date_iso: Option<String>,
-    pub game_start_time: Option<String>,
+    #[serde(deserialize_with = "super::serde_helpers::deserialize_optional_datetime")]
+    pub end_date_iso: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "super::serde_helpers::deserialize_optional_datetime")]
+    pub game_start_time: Option<DateTime<Utc>>,
     pub market_slug: String,
     pub icon: String,
     pub fpmm: String,
@@ -37,14 +40,11 @@ pub struct Market {
 impl Market {
     /// Returns true if the market ends within the specified time period from now.
     /// Returns true if there's no end date (perpetual market).
-    /// Returns true if the date is invalid.
     pub fn ends_within(&self, time_delta: TimeDelta) -> bool {
-        if let Some(end_date_iso) = &self.end_date_iso {
-            if let Ok(end_date) = chrono::DateTime::parse_from_rfc3339(end_date_iso) {
-                let now = chrono::Utc::now();
-                let target_date = now + time_delta;
-                return end_date <= target_date;
-            }
+        if let Some(end_date) = &self.end_date_iso {
+            let now = Utc::now();
+            let target_date = now + time_delta;
+            return end_date <= &target_date;
         }
         true
     }
@@ -161,7 +161,7 @@ mod tests {
     use super::*;
     use chrono::TimeDelta;
 
-    fn create_test_market(end_date_iso: Option<String>) -> Market {
+    fn create_test_market(end_date_iso: Option<DateTime<Utc>>) -> Market {
         Market {
             condition_id: "test".to_string(),
             tokens: [
@@ -186,7 +186,11 @@ mod tests {
             enable_order_book: true,
             archived: false,
             accepting_orders: true,
-            accepting_order_timestamp: Some("2024-12-29T22:38:10Z".to_string()),
+            accepting_order_timestamp: Some(
+                DateTime::parse_from_rfc3339("2024-12-29T22:38:10Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
             question_id: "q1".to_string(),
             question: "Test question?".to_string(),
             minimum_order_size: Decimal::ZERO,
@@ -207,8 +211,8 @@ mod tests {
     #[test]
     fn test_ends_within_near_future() {
         // Market ending in 1 hour should end within 2 hours
-        let future_date = chrono::Utc::now() + TimeDelta::hours(1);
-        let market = create_test_market(Some(future_date.to_rfc3339()));
+        let future_date = Utc::now() + TimeDelta::hours(1);
+        let market = create_test_market(Some(future_date));
 
         assert!(market.ends_within(TimeDelta::hours(2)));
     }
@@ -216,8 +220,8 @@ mod tests {
     #[test]
     fn test_ends_within_far_future() {
         // Market ending in 3 hours should NOT end within 1 hour
-        let future_date = chrono::Utc::now() + TimeDelta::hours(3);
-        let market = create_test_market(Some(future_date.to_rfc3339()));
+        let future_date = Utc::now() + TimeDelta::hours(3);
+        let market = create_test_market(Some(future_date));
 
         assert!(!market.ends_within(TimeDelta::hours(1)));
     }
@@ -231,18 +235,10 @@ mod tests {
     }
 
     #[test]
-    fn test_ends_within_invalid_date() {
-        // Market with invalid date format should return true (fail-open)
-        let market = create_test_market(Some("invalid-date".to_string()));
-
-        assert!(market.ends_within(TimeDelta::hours(24)));
-    }
-
-    #[test]
     fn test_ends_within_already_ended() {
         // Market that ended 1 hour ago has ended within any positive time window
-        let past_date = chrono::Utc::now() - TimeDelta::hours(1);
-        let market = create_test_market(Some(past_date.to_rfc3339()));
+        let past_date = Utc::now() - TimeDelta::hours(1);
+        let market = create_test_market(Some(past_date));
 
         assert!(market.ends_within(TimeDelta::hours(1)));
         assert!(market.ends_within(TimeDelta::days(7)));

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Deserializer};
@@ -45,5 +46,24 @@ where
         }
         Repr::U64(u) => Ok(Decimal::from(u)),
         Repr::I64(i) => Ok(Decimal::from(i)),
+    }
+}
+
+/// Deserialize Option<DateTime<Utc>> from an optional RFC3339 string
+pub fn deserialize_optional_datetime<'de, D>(
+    deserializer: D,
+) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) => {
+            let dt = DateTime::parse_from_rfc3339(&s)
+                .map_err(serde::de::Error::custom)?
+                .with_timezone(&Utc);
+            Ok(Some(dt))
+        }
+        None => Ok(None),
     }
 }
