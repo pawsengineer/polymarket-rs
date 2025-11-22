@@ -1,6 +1,6 @@
 /// Pagination cursors for API requests
-pub const INITIAL_CURSOR: &str = "LTE=";
-pub const END_CURSOR: &str = "MA==";
+pub const END_CURSOR: &str = "LTE=";
+pub const INITIAL_CURSOR: &str = "MA==";
 
 /// Pagination parameters for list endpoints
 #[derive(Debug, Clone)]
