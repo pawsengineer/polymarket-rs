@@ -260,6 +260,22 @@ impl OrderBookSummary {
             side,
         )
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.bids.is_empty() && self.asks.is_empty()
+    }
+
+    pub fn sort_bids(&self) -> Vec<PriceLevel> {
+        let mut bids = self.bids.clone();
+        bids.sort_by(|a, b| b.price.cmp(&a.price));
+        bids
+    }
+
+    pub fn sort_asks(&self) -> Vec<PriceLevel> {
+        let mut asks = self.asks.clone();
+        asks.sort_by(|a, b| a.price.cmp(&b.price));
+        asks
+    }
 }
 
 /// Parameters for querying order book
