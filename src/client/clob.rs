@@ -241,6 +241,12 @@ impl ClobClient {
         self.http_client.get(&path, None).await
     }
 
+    /// Get a specific market by slug
+    pub async fn get_market_by_slug(&self, market_slug: &str) -> Result<Market> {
+        let path = format!("/markets/slug/{}", market_slug);
+        self.http_client.get(&path, None).await
+    }
+
     /// Get live activity events for a market (trades and events)
     ///
     /// # Arguments
