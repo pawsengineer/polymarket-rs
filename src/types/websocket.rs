@@ -192,6 +192,9 @@ pub struct MakerOrder {
     /// Order ID of the maker order (for fill tracking)
     #[serde(default)]
     pub order_id: Option<String>,
+    /// V2.8: Asset/Token ID of the maker order (for correct YES/NO determination)
+    #[serde(default)]
+    pub asset_id: Option<String>,
 }
 
 /// Order status update event
