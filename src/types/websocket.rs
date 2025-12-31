@@ -160,6 +160,9 @@ pub struct TradeEvent {
     pub status: TradeStatus,
     /// Maker orders that were matched
     pub maker_orders: Vec<MakerOrder>,
+    /// V3.9: ID of the taker order (when we are the taker)
+    #[serde(default)]
+    pub taker_order_id: Option<String>,
 }
 
 /// Trade execution status
@@ -189,6 +192,12 @@ pub struct MakerOrder {
     pub price: Decimal,
     /// Outcome (e.g., "Yes" or "No")
     pub outcome: String,
+    /// Order ID of the maker order (for fill tracking)
+    #[serde(default)]
+    pub order_id: Option<String>,
+    /// V2.8: Asset/Token ID of the maker order (for correct YES/NO determination)
+    #[serde(default)]
+    pub asset_id: Option<String>,
 }
 
 /// Order status update event
